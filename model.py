@@ -2,87 +2,80 @@ import torch
 import matplotlib.pyplot as plt
 import pandas as pd
 import numpy as np
-import matplotlib.pyplot as plt
-from torch.utils.data import DataLoader, Subset, SubsetRandomSampler
-from sklearn.preprocessing import LabelEncoder
 import torch
 import torch.nn as nn
+import math
 import torch.optim as optim
-
-
+#loading the data with panda library
 data = pd.read_csv('Hyderabad.csv')
-image=plt.scatter(data['Area'], data['Price'])
+data=data.drop('Location', axis=1)
+data_array = data.to_numpy()
+data_tensor = torch.tensor(data_array, dtype=torch.float32)
 
-numeric_data = data.select_dtypes(include=['float64', 'float32', 'float16', 'int64', 'int32', 'int16', 'int8', 'uint8'])
-
-# Perform one-hot encoding on categorical columns
-categorical_data = data.select_dtypes(include=['object'])
-encoded_data = pd.get_dummies(categorical_data)
-
-# Concatenate numeric and encoded categorical data
-processed_data = pd.concat([numeric_data, encoded_data], axis=1)
-
-# Convert processed data to PyTorch tensor
-data_tensor = torch.tensor(processed_data.values, dtype=torch.float32)
-
-# Split the data into input features and target variable
-inputs = data_tensor[1:1800, 1:]
-targets = data_tensor[1:1800,0]
-
-# Define a linear regression model
+#making the model
 class LinearRegression(nn.Module):
-    def __init__(self, input_size, output_size):
+    def __init__(self):
         super(LinearRegression, self).__init__()
-        self.linear = nn.Linear(input_size, output_size)
-    
+        self.linear = nn.Linear(37, 1)
+       
     def forward(self, x):
-        return self.linear(x)
-    
-# Create an instance of the linear regression model
-input_size = inputs.size(1)
-output_size = 1
-model = LinearRegression(input_size, output_size)
+        predict_y = self.linear(x)
+        return predict_y
 
-# Define loss function and optimizer
-criterion = nn.MSELoss()
-optimizer = optim.SGD(model.parameters(), lr=0.01)
+#create model
+linear_model = LinearRegression()
 
-# Training loop
-num_epochs = 100
+# criterion and optimizer
+criterion = torch.nn.MSELoss()
+learning_rate=0.01
+optimizer = torch.optim.RMSprop(linear_model.parameters(), lr=learning_rate)
+
+inputs = data_tensor[1:1800, 1:38]
+outputs= data_tensor[1:1800, 0]
+
+num_epochs = 1100
 for epoch in range(num_epochs):
-    # Forward pass
-    outputs = model(inputs)
-    loss = criterion(outputs, targets)
-    
-    # Backward pass and optimization
-    optimizer.zero_grad()
-    loss.backward()
-    optimizer.step()
-    
-    # Print the loss after each epoch
-    print(f'Epoch {epoch+1}/{num_epochs}, Loss: {loss.item()}')
-    # Calculate mean absolute percentage error (MAPE)
-    absolute_percentage_error = torch.abs((targets - outputs) / targets)
-    mape = torch.mean(absolute_percentage_error) * 100
-    print(f'Mean Absolute Percentage Error (MAPE): {mape:.2f}%')
-    
+    total_loss = 0.0
+    for i in range(inputs.size(0)):
+        # Clear gradients
+        optimizer.zero_grad()
 
-# Test the model
-weights = model.linear.weight.data.numpy().flatten()
+        # Get a single input and output
+        input_i = inputs[i]
+        output_i = outputs[i]
 
-test_inputs = data_tensor[1800:2000, 1:]
-test_output = data_tensor[1800:2000,0]
+        # Reshape the input to match the expected size (1, 37)
+        input_i = input_i.unsqueeze(0)
 
-predicted_prices = model(test_inputs).squeeze()
-print(f'Predicted Price: {predicted_prices}')
+        # Forward pass
+        predicted_output_i = linear_model(input_i)
 
-# Plot the weights
-plt.bar(range(len(weights)), weights)
-plt.xlabel('Weight Index')
-plt.ylabel('Weight Value')
-plt.title('Weights of Linear Regression Model')
-plt.show()
+        # Compute loss
+        loss = criterion(predicted_output_i, output_i)
+
+        # Accumulate total loss
+        total_loss += loss.item()
+
+        # Backward pass
+        loss.backward()
+
+        # Update parameters
+        optimizer.step()
+        absolute_difference = torch.abs(predicted_output_i - output_i)
+
+# Calculate the percentage error
+    percentage_error = (absolute_difference / output_i) * 100
+
+# Compute the average percentage error
+    average_percentage_error = torch.mean(100-percentage_error)
+
+    print(f"Average Accuracy Percentage: {average_percentage_error.item()}%")
+    # Print average loss for the epoch
+    average_loss = total_loss / inputs.size(0)
+    print(f'Epoch {epoch+1}/{num_epochs}, Average Loss: {average_loss}')
 
 
+path = "linear_regression_model.pth"
 
-
+# Save the model
+torch.save(linear_model.state_dict(), path)
